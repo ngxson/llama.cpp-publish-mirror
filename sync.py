@@ -20,7 +20,7 @@ SYNC_TAGS = [
 ####################################################################
 # Registry API functions
 
-def get_auth_token(repository, scope, host='ghcr.io', service='ghcr.io'):
+def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io') -> str:
     """
     Retrieves an authentication token for the specified repository.
 
@@ -45,7 +45,7 @@ def get_auth_token(repository, scope, host='ghcr.io', service='ghcr.io'):
     token_data = json.loads(data.decode('utf-8'))
     return token_data['token']
 
-def fetch_manifest(repository, tag, token, host='ghcr.io'):
+def fetch_manifest(repository: str, tag: str, token: str, host='ghcr.io') -> str:
     """
     Fetches the manifest for the given repository and tag using the provided token.
     For docker hub, host is registry-1.docker.io
@@ -65,7 +65,7 @@ class PutRequest(urllib.request.Request):
     def get_method(self):
         return "PUT"
 
-def push_manifest(dest_repository, digest, data, token, host='ghcr.io'):
+def push_manifest(dest_repository: str, digest: str, data: str, token: str, host='ghcr.io'):
     """
     Pushes a manifest (as JSON) to the destination repository.
     """
@@ -86,13 +86,14 @@ def push_manifest(dest_repository, digest, data, token, host='ghcr.io'):
 
 def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push):
     print(f"Fetching manifest for {src_repo}:{src_ref}")
-    manifest = fetch_manifest(src_repo, src_ref, token_pull)
+    manifest_raw = fetch_manifest(src_repo, src_ref, token_pull)
+    manifest_json = json.loads(manifest_raw)
 
     # Check if this is a multi-arch image index.
-    if "manifests" in manifest:
+    if "manifests" in manifest_json:
         print("Detected multi-arch manifest index.")
         # For each sub-manifest, mirror it.
-        for entry in manifest["manifests"]:
+        for entry in manifest_json["manifests"]:
             sub_digest = entry.get("digest")
             platform = entry.get("platform", {})
             print(f"  Mirroring sub-manifest for platform {platform} with digest {sub_digest}")
@@ -103,10 +104,10 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
             print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
     else:
         print("Single-architecture manifest detected:")
-        print(json.dumps(json.loads(manifest), indent=2))
+        print(json.dumps(manifest_json, indent=2))
 
     print("\nPushing top-level manifest (index or single manifest) to destination")
-    status, response_body = push_manifest(dest_repo, dest_tag, manifest, token_push)
+    status, response_body = push_manifest(dest_repo, dest_tag, manifest_raw, token_push)
     return status, response_body
 
 for tag in SYNC_TAGS:    
