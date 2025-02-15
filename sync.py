@@ -5,18 +5,21 @@ import urllib.parse
 import base64
 import os
 
+# This script mirrors a set of tags from one repository to another.
+# It is designed mirror WITHIN the same registry, by cross-mounting blobs.
+# This prevents the need to download and re-upload the same data.
+
 REGISTRY_HOST = "ghcr.io"
 REGISTRY_SERVICE = "ghcr.io"
 
 SOURCE_REPO = "ggerganov/llama.cpp"
 TARGET_REPO = "ngxson/llama.cpp-test-mirror"
 SYNC_TAGS = [
-    'server', 'light'
-    #'server', 'light', 'full',
-    #'server-intel', 'light-intel', 'full-intel',
-    #'server-cuda', 'light-cuda', 'full-cuda',
-    #'server-musa', 'light-musa', 'full-musa',
-    #'server-vulkan', 'light-vulkan', 'full-vulkan'
+    'server', 'light', 'full',
+    'server-intel', 'light-intel', 'full-intel',
+    'server-cuda', 'light-cuda', 'full-cuda',
+    'server-musa', 'light-musa', 'full-musa',
+    'server-vulkan', 'light-vulkan', 'full-vulkan'
 ]
 
 ####################################################################
