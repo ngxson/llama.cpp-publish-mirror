@@ -41,4 +41,5 @@ jobs:
           set -e
           python sync.py
         env:
-          PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PUSH_USERNAME: ${{ github.repository_owner }}
+          PUSH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}

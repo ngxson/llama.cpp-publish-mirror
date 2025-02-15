@@ -2,7 +2,7 @@
 import json
 import urllib.request
 import urllib.parse
-import sys
+import base64
 import os
 
 
@@ -65,15 +65,12 @@ class PutRequest(urllib.request.Request):
     def get_method(self):
         return "PUT"
 
-def push_manifest(dest_repository, reference, manifest_json, token, host='ghcr.io'):
+def push_manifest(dest_repository, digest, manifest_json, token, host='ghcr.io'):
     """
     Pushes a manifest (as JSON) to the destination repository.
-    
-    'reference' can be a tag (e.g. "latest") or a digest string.
-    The Content-Type header is set based on the manifest's "mediaType" field.
     """
-    url = f'https://{host}/v2/{dest_repository}/manifests/{reference}'
-    media_type = manifest_json.get("mediaType", "application/vnd.docker.distribution.manifest.v2+json")
+    url = f'https://{host}/v2/{dest_repository}/manifests/{digest}'
+    media_type = manifest_json.get("mediaType", "application/vnd.oci.image.index.v1+json")
     data = json.dumps(manifest_json).encode('utf-8')
     req = PutRequest(url, data=data)
     req.add_header('Authorization', f'Bearer {token}')
@@ -99,28 +96,38 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
             platform = entry.get("platform", {})
             print(f"  Mirroring sub-manifest for platform {platform} with digest {sub_digest}")
             sub_manifest = fetch_manifest(src_repo, sub_digest, token_pull)
+            print(f"  Got sub-manifest:")
+            print(json.dumps(sub_manifest, indent=2))
             status_sub, resp_sub = push_manifest(dest_repo, sub_digest, sub_manifest, token_push)
             print(resp_sub)
             print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}")
     else:
-        print("Single-architecture manifest detected.")
+        print("Single-architecture manifest detected:")
+        print(json.dumps(manifest, indent=2))
 
     print("\nPushing top-level manifest (index or single manifest) to destination")
     status, response_body = push_manifest(dest_repo, dest_tag, manifest, token_push)
     return status, response_body
 
 for tag in SYNC_TAGS:    
-    # Obtain a token with both pull and push permissions for the source (and destination)
-    token_pull = get_auth_token(SOURCE_REPO, 'pull')
-    token_push = os.environ.get('PUSH_TOKEN')
+    # get token for pushing
+    push_username = os.environ.get('PUSH_USERNAME')
+    if not push_username:
+        print("Error: PUSH_USERNAME environment variable not set")
+    push_password = os.environ.get('PUSH_PASSWORD')
+    if not push_password:
+        print("Error: PUSH_PASSWORD environment variable not set")
+    auth_string = f"{push_username}:{push_password}".encode('ascii')
+    token_push = base64.b64encode(auth_string).decode('ascii')
 
-    if not token_push:
-        print("Error: PUSH_TOKEN environment variable not set", file=sys.stderr)
+    # get token for pulling
+    token_pull = get_auth_token(SOURCE_REPO, 'pull')
 
     try:
         status, resp = mirror_image(SOURCE_REPO, tag, TARGET_REPO, tag, token_pull, token_push)
         print(f"\nMirror push response: HTTP {status}")
         print(resp)
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
+        print(f"Error: {e}")
+        exit(1)
 
