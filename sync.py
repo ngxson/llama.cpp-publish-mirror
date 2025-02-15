@@ -12,7 +12,7 @@ import os
 REGISTRY_HOST = "ghcr.io"
 REGISTRY_SERVICE = "ghcr.io"
 
-SOURCE_REPO = "ggerganov/llama.cpp"
+SOURCE_REPO = "ggml-org/llama.cpp"
 TARGET_REPO = "ngxson/llama.cpp-test-mirror"
 SYNC_TAGS = [
     'server', 'light', 'full',
