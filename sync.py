@@ -58,21 +58,21 @@ def fetch_manifest(repository, tag, token, host='ghcr.io'):
     with urllib.request.urlopen(req) as response:
         data = response.read()
 
-    return json.loads(data.decode('utf-8'))
+    return data.decode('utf-8')
 
 # Helper class to allow HTTP PUT
 class PutRequest(urllib.request.Request):
     def get_method(self):
         return "PUT"
 
-def push_manifest(dest_repository, digest, manifest_json, token, host='ghcr.io'):
+def push_manifest(dest_repository, digest, data, token, host='ghcr.io'):
     """
     Pushes a manifest (as JSON) to the destination repository.
     """
     url = f'https://{host}/v2/{dest_repository}/manifests/{digest}'
     print("PUT", url)
+    manifest_json = json.loads(data)
     media_type = manifest_json.get("mediaType", "application/vnd.oci.image.index.v1+json")
-    data = json.dumps(manifest_json).encode('utf-8')
     req = PutRequest(url, data=data)
     req.add_header('Authorization', f'Bearer {token}')
     req.add_header('Content-Type', media_type)
@@ -98,13 +98,12 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
             print(f"  Mirroring sub-manifest for platform {platform} with digest {sub_digest}")
             sub_manifest = fetch_manifest(src_repo, sub_digest, token_pull)
             print(f"  Got sub-manifest:")
-            print(json.dumps(sub_manifest, indent=2))
+            print(json.dumps(json.loads(sub_manifest), indent=2))
             status_sub, resp_sub = push_manifest(dest_repo, sub_digest, sub_manifest, token_push)
-            print(resp_sub)
-            print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}")
+            print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
     else:
         print("Single-architecture manifest detected:")
-        print(json.dumps(manifest, indent=2))
+        print(json.dumps(json.loads(manifest), indent=2))
 
     print("\nPushing top-level manifest (index or single manifest) to destination")
     status, response_body = push_manifest(dest_repo, dest_tag, manifest, token_push)
