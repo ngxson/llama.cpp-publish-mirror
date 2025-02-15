@@ -45,4 +45,5 @@ jobs:
         shell: bash
         run: |
           set -e
-          exec tmp.sh
+          chmod +x ./tmp.sh
+          ./tmp.sh
