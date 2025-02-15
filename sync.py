@@ -73,7 +73,7 @@ def push_manifest(dest_repository: str, digest: str, data: str, token: str, host
     print("PUT", url)
     manifest_json = json.loads(data)
     media_type = manifest_json.get("mediaType", "application/vnd.oci.image.index.v1+json")
-    req = PutRequest(url, data=data)
+    req = PutRequest(url, data=data.encode('utf-8'))
     req.add_header('Authorization', f'Bearer {token}')
     req.add_header('Content-Type', media_type)
     with urllib.request.urlopen(req) as response:
