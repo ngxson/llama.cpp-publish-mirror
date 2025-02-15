@@ -9,16 +9,16 @@ import os
 TARGET_REPO = "ngxson/llama.cpp-test-mirror"
 SOURCE_REPO = "ggerganov/llama.cpp"
 SYNC_TAGS = [
-    'server', 'light', 'full',
-    'server-intel', 'light-intel', 'full-intel',
-    'server-cuda', 'light-cuda', 'full-cuda',
-    'server-musa', 'light-musa', 'full-musa',
-    'server-vulkan', 'light-vulkan', 'full-vulkan'
+    'server', 'light'
+    #'server', 'light', 'full',
+    #'server-intel', 'light-intel', 'full-intel',
+    #'server-cuda', 'light-cuda', 'full-cuda',
+    #'server-musa', 'light-musa', 'full-musa',
+    #'server-vulkan', 'light-vulkan', 'full-vulkan'
 ]
 
-OUTPUT_SCRIPT = "tmp.sh"
-
 ####################################################################
+# Registry API functions
 
 def get_auth_token(repository, host='ghcr.io', service='ghcr.io'):
     """
@@ -60,57 +60,64 @@ def fetch_manifest(repository, tag, token, host='ghcr.io'):
 
     return json.loads(data.decode('utf-8'))
 
+# Helper class to allow HTTP PUT
+class PutRequest(urllib.request.Request):
+    def get_method(self):
+        return "PUT"
+
+def push_manifest(dest_repository, reference, manifest_json, token, host='ghcr.io'):
+    """
+    Pushes a manifest (as JSON) to the destination repository.
+    
+    'reference' can be a tag (e.g. "latest") or a digest string.
+    The Content-Type header is set based on the manifest's "mediaType" field.
+    """
+    url = f'https://{host}/v2/{dest_repository}/manifests/{reference}'
+    media_type = manifest_json.get("mediaType", "application/vnd.docker.distribution.manifest.v2+json")
+    data = json.dumps(manifest_json).encode('utf-8')
+    req = PutRequest(url, data=data)
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Content-Type', media_type)
+    with urllib.request.urlopen(req) as response:
+        status = response.getcode()
+        resp_body = response.read().decode('utf-8')
+    return status, resp_body
 
 ####################################################################
+# Main function
 
-def get_manifest_digest_set(repo, tag):
-    token = get_auth_token(repo)
-    manifest = fetch_manifest(repo, tag, token)
-    print(f"Manifest:", json.dumps(manifest, indent=2))
-    if 'manifests' in manifest:
-        return set([elem['digest'] for elem in manifest['manifests']])
+def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push):
+    print(f"Fetching manifest for {src_repo}:{src_ref}")
+    manifest = fetch_manifest(src_repo, src_ref, token_pull)
+
+    # Check if this is a multi-arch image index.
+    if "manifests" in manifest:
+        print("Detected multi-arch manifest index.")
+        # For each sub-manifest, mirror it.
+        for entry in manifest["manifests"]:
+            sub_digest = entry.get("digest")
+            platform = entry.get("platform", {})
+            print(f"  Mirroring sub-manifest for platform {platform} with digest {sub_digest}")
+            sub_manifest = fetch_manifest(src_repo, sub_digest, token_pull)
+            status_sub, resp_sub = push_manifest(dest_repo, sub_digest, sub_manifest, token_push)
+            print(resp_sub)
+            print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}")
     else:
-        return set([elem['digest'] for elem in manifest['layers']])
+        print("Single-architecture manifest detected.")
 
-OUTPUT_SCRIPT_CONTENT = f"""#!/bin/bash
+    print("\nPushing top-level manifest (index or single manifest) to destination")
+    status, response_body = push_manifest(dest_repo, dest_tag, manifest, token_push)
+    return status, response_body
 
-set -e
-"""
-TAGS_TO_BE_SYNCED = []
+for tag in SYNC_TAGS:    
+    # Obtain a token with both pull and push permissions for the source (and destination)
+    token_pull = get_auth_token(SOURCE_REPO, 'pull')
+    token_push = get_auth_token(SOURCE_REPO, 'pull,push')
 
-for tag in SYNC_TAGS:
-    print(f"---")
-    print(f"Checking tag: {tag}")
     try:
-        print(f"Checking: {SOURCE_REPO}:{tag}")
-        source_digests = get_manifest_digest_set(SOURCE_REPO, tag)
-
-        # If destination repo is not found, we don't need to check for existing tags
-        try:
-            print(f"Checking: {TARGET_REPO}:{tag}")
-            target_digests = get_manifest_digest_set(TARGET_REPO, tag)
-        except Exception as e:
-            print(f"Error: {e}")
-            target_digests = set()
-
-        if source_digests == target_digests:
-            print(f"Tag '{tag}' is already in sync")
-            continue
-        else:
-            print(f"Tag '{tag}' is out of sync")
-            TAGS_TO_BE_SYNCED.append(tag)
-            OUTPUT_SCRIPT_CONTENT += f"\n"
-            OUTPUT_SCRIPT_CONTENT += f"docker pull ghcr.io/{SOURCE_REPO}:{tag}\n"
-            OUTPUT_SCRIPT_CONTENT += f"docker tag ghcr.io/{SOURCE_REPO}:{tag} ghcr.io/{TARGET_REPO}:{tag}\n"
-            OUTPUT_SCRIPT_CONTENT += f"docker push ghcr.io/{TARGET_REPO}:{tag}\n"
-    
+        status, resp = mirror_image(SOURCE_REPO, tag, TARGET_REPO, tag, token_pull, token_push)
+        print(f"\nMirror push response: HTTP {status}")
+        print(resp)
     except Exception as e:
-        print(f"Error:", e)
-        print(f"Skipping tag '{tag}' due to error")
-        continue
+        print(f"Error: {e}", file=sys.stderr)
 
-print(f"---")
-print(f"Tags to be synced: {TAGS_TO_BE_SYNCED}")
-
-with open(OUTPUT_SCRIPT, 'w') as f:
-    f.write(OUTPUT_SCRIPT_CONTENT)
