@@ -130,7 +130,7 @@ for tag in SYNC_TAGS:
         print(resp)
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        print(f"Error: {e}")
+        print(f"Error: {e}", body)
         exit(1)
     except Exception as e:
         print(f"Error: {e}")
