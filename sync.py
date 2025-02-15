@@ -5,6 +5,8 @@ import urllib.parse
 import base64
 import os
 
+REGISTRY_HOST = "ghcr.io"
+REGISTRY_SERVICE = "ghcr.io"
 
 SOURCE_REPO = "ggerganov/llama.cpp"
 TARGET_REPO = "ngxson/llama.cpp-test-mirror"
@@ -20,7 +22,7 @@ SYNC_TAGS = [
 ####################################################################
 # Registry API functions
 
-def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io', credentials=None) -> str:
+def get_auth_token(repository: str, scope: str, host=REGISTRY_HOST, service=REGISTRY_SERVICE, credentials=None) -> str:
     """
     Retrieves an authentication token for the specified repository.
 
@@ -52,7 +54,7 @@ def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io
     token_data = json.loads(data.decode('utf-8'))
     return token_data['token']
 
-def fetch_manifest(repository: str, tag: str, token: str, host='ghcr.io') -> str:
+def fetch_manifest(repository: str, tag: str, token: str, host=REGISTRY_HOST) -> str:
     """
     Fetches the manifest for the given repository and tag using the provided token.
     For docker hub, host is registry-1.docker.io
@@ -67,18 +69,42 @@ def fetch_manifest(repository: str, tag: str, token: str, host='ghcr.io') -> str
 
     return data.decode('utf-8')
 
+def cross_mount_blob(dest_repo: str, source_repo: str, digest: str, token: str, host=REGISTRY_HOST):
+    """
+    Attempts to cross-mount (copy) a blob from source_repo into dest_repo on ghcr.io.
+    """
+    # Build the URL: POST /v2/<dest_repo>/blobs/uploads/?mount=<digest>&from=<source_repo>
+    base_url = f'https://{host}/v2/{dest_repo}/blobs/uploads/'
+    params = {
+        'mount': digest,
+        'from': source_repo
+    }
+    url = base_url + '?' + urllib.parse.urlencode(params)
+
+    req = urllib.request.Request(url, method="POST")
+    req.add_header('Authorization', f'Bearer {token}')
+
+    with urllib.request.urlopen(req) as response:
+        status = response.getcode()
+        resp_body = response.read().decode('utf-8')
+    return status, resp_body
+
 # Helper class to allow HTTP PUT
 class PutRequest(urllib.request.Request):
     def get_method(self):
         return "PUT"
 
-def push_manifest(dest_repository: str, digest: str, data: str, token: str, host='ghcr.io'):
+def push_manifest(dest_repository: str, digest: str, data: str, token: str, src_cross_mount: str, host=REGISTRY_HOST):
     """
     Pushes a manifest (as JSON) to the destination repository.
     """
     url = f'https://{host}/v2/{dest_repository}/manifests/{digest}'
     print("PUT", url)
     manifest_json = json.loads(data)
+    for layer in manifest_json.get("layers", []):
+        layer_digest = layer.get("digest")
+        print(f"    Attempting to cross-mount layer {layer_digest}")
+        cross_mount_blob(dest_repository, src_cross_mount, layer_digest, token)
     media_type = manifest_json.get("mediaType", "application/vnd.oci.image.index.v1+json")
     req = PutRequest(url, data=data.encode('utf-8'))
     req.add_header('Authorization', f'Bearer {token}')
@@ -107,14 +133,14 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
             sub_manifest = fetch_manifest(src_repo, sub_digest, token_pull)
             print(f"  Got sub-manifest:")
             print(json.dumps(json.loads(sub_manifest), indent=2))
-            status_sub, resp_sub = push_manifest(dest_repo, sub_digest, sub_manifest, token_push)
+            status_sub, resp_sub = push_manifest(dest_repo, sub_digest, sub_manifest, token_push, src_repo)
             print(f"  Pushed sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
     else:
         print("Single-architecture manifest detected:")
         print(json.dumps(manifest_json, indent=2))
 
     print("\nPushing top-level manifest (index or single manifest) to destination")
-    status, response_body = push_manifest(dest_repo, dest_tag, manifest_raw, token_push)
+    status, response_body = push_manifest(dest_repo, dest_tag, manifest_raw, token_push, src_repo)
     return status, response_body
 
 for tag in SYNC_TAGS:    
