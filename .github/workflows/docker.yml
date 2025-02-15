@@ -4,6 +4,7 @@ name: Publish to mirror
 # Ref discussion: https://github.com/ggml-org/llama.cpp/pull/11887
 
 on:
+  push:
   workflow_dispatch: # allows manual triggering
   #schedule:
     # Re-run every 15 minutes

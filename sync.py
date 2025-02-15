@@ -20,7 +20,7 @@ SYNC_TAGS = [
 ####################################################################
 # Registry API functions
 
-def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io') -> str:
+def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io', credentials=None) -> str:
     """
     Retrieves an authentication token for the specified repository.
 
@@ -38,8 +38,15 @@ def get_auth_token(repository: str, scope: str, host='ghcr.io', service='ghcr.io
         'scope': f'repository:{repository}:{scope}'
     }
     url = token_url + '?' + urllib.parse.urlencode(query_params)
+    req = urllib.request.Request(url)
 
-    with urllib.request.urlopen(url) as response:
+    if credentials is not None:
+        username, password = credentials
+        credentials_str = f"{username}:{password}"
+        encoded_credentials = base64.b64encode(credentials_str.encode('utf-8')).decode('utf-8')
+        req.add_header('Authorization', f'Basic {encoded_credentials}')
+
+    with urllib.request.urlopen(req) as response:
         data = response.read()
 
     token_data = json.loads(data.decode('utf-8'))
@@ -118,8 +125,7 @@ for tag in SYNC_TAGS:
     push_password = os.environ.get('PUSH_PASSWORD')
     if not push_password:
         print("Error: PUSH_PASSWORD environment variable not set")
-    auth_string = f"{push_username}:{push_password}".encode('ascii')
-    token_push = base64.b64encode(auth_string).decode('ascii')
+    token_push = get_auth_token(SOURCE_REPO, 'push', credentials=(push_username, push_password))
 
     # get token for pulling
     token_pull = get_auth_token(SOURCE_REPO, 'pull')
