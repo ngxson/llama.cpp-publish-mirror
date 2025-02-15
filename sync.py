@@ -6,8 +6,8 @@ import sys
 import os
 
 
-TARGET_REPO = "ngxson/llama.cpp-test-mirror"
 SOURCE_REPO = "ggerganov/llama.cpp"
+TARGET_REPO = "ngxson/llama.cpp-test-mirror"
 SYNC_TAGS = [
     'server', 'light'
     #'server', 'light', 'full',
@@ -20,7 +20,7 @@ SYNC_TAGS = [
 ####################################################################
 # Registry API functions
 
-def get_auth_token(repository, actions, host='ghcr.io', service='ghcr.io'):
+def get_auth_token(repository, scope, host='ghcr.io', service='ghcr.io'):
     """
     Retrieves an authentication token for the specified repository.
 
@@ -35,7 +35,7 @@ def get_auth_token(repository, actions, host='ghcr.io', service='ghcr.io'):
     token_url = f'https://{host}/token'
     query_params = {
         'service': service,
-        'scope': f'repository:{repository}:{actions}'
+        'scope': f'repository:{repository}:{scope}'
     }
     url = token_url + '?' + urllib.parse.urlencode(query_params)
 
@@ -112,7 +112,10 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
 for tag in SYNC_TAGS:    
     # Obtain a token with both pull and push permissions for the source (and destination)
     token_pull = get_auth_token(SOURCE_REPO, 'pull')
-    token_push = get_auth_token(TARGET_REPO, 'pull,push')
+    token_push = os.environ.get('PUSH_TOKEN')
+
+    if not token_push:
+        print("Error: PUSH_TOKEN environment variable not set", file=sys.stderr)
 
     try:
         status, resp = mirror_image(SOURCE_REPO, tag, TARGET_REPO, tag, token_pull, token_push)

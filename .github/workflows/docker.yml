@@ -40,3 +40,5 @@ jobs:
         run: |
           set -e
           python sync.py
+        env:
+          PUSH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
