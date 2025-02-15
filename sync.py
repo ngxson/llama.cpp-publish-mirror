@@ -70,6 +70,7 @@ def push_manifest(dest_repository, digest, manifest_json, token, host='ghcr.io')
     Pushes a manifest (as JSON) to the destination repository.
     """
     url = f'https://{host}/v2/{dest_repository}/manifests/{digest}'
+    print("PUT", url)
     media_type = manifest_json.get("mediaType", "application/vnd.oci.image.index.v1+json")
     data = json.dumps(manifest_json).encode('utf-8')
     req = PutRequest(url, data=data)
@@ -127,6 +128,10 @@ for tag in SYNC_TAGS:
         status, resp = mirror_image(SOURCE_REPO, tag, TARGET_REPO, tag, token_pull, token_push)
         print(f"\nMirror push response: HTTP {status}")
         print(resp)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"Error: {e}")
+        exit(1)
     except Exception as e:
         print(f"Error: {e}")
         exit(1)
