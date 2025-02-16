@@ -117,6 +117,18 @@ def push_manifest(dest_repository: str, digest: str, data: str, token: str, src_
         resp_body = response.read().decode('utf-8')
     return status, resp_body
 
+def untag_manifest(repository: str, tag: str, token: str, host=REGISTRY_HOST):
+    """
+    Untags a manifest from the repository.
+    """
+    url = f'https://{host}/v2/{repository}/manifests/{tag}'
+    req = urllib.request.Request(url, method="DELETE")
+    req.add_header('Authorization', f'Bearer {token}')
+    with urllib.request.urlopen(req) as response:
+        status = response.getcode()
+        resp_body = response.read().decode('utf-8')
+    return status, resp_body
+
 ####################################################################
 # Main function
 
@@ -144,6 +156,14 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
 
     print("\nPushing top-level manifest (index or single manifest) to destination")
     status, response_body = push_manifest(dest_repo, dest_tag, manifest_raw, token_push, src_repo)
+
+    # Untag the dest manifest if needed (so they will apprear under "untagged" in the registry)
+    if "manifests" in manifest_json:
+        for entry in manifest_json["manifests"]:
+            sub_digest = entry.get("digest")
+            status_sub, resp_sub = untag_manifest(dest_repo, sub_digest, token_push)
+            print(f"  Untagged sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
+
     return status, response_body
 
 for tag in SYNC_TAGS:    
