@@ -158,11 +158,12 @@ def mirror_image(src_repo, src_ref, dest_repo, dest_tag, token_pull, token_push)
     status, response_body = push_manifest(dest_repo, dest_tag, manifest_raw, token_push, src_repo)
 
     # Untag the dest manifest if needed (so they will apprear under "untagged" in the registry)
-    if "manifests" in manifest_json:
-        for entry in manifest_json["manifests"]:
-            sub_digest = entry.get("digest")
-            status_sub, resp_sub = untag_manifest(dest_repo, sub_digest, token_push)
-            print(f"  Untagged sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
+    # TODO: this doesn't work, DELETE /v2/{repository}/manifests/{tag} does not exist
+    # if "manifests" in manifest_json:
+    #     for entry in manifest_json["manifests"]:
+    #         sub_digest = entry.get("digest")
+    #         status_sub, resp_sub = untag_manifest(dest_repo, sub_digest, token_push)
+    #         print(f"  Untagged sub-manifest {sub_digest}: HTTP {status_sub}", resp_sub)
 
     return status, response_body
 
